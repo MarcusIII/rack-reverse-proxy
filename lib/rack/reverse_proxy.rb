@@ -20,7 +20,8 @@ module Rack
       headers = Rack::Utils::HeaderHash.new
       env.each { |key, value|
         if key =~ /HTTP_(.*)/
-          headers[$1] = value
+          # edit from https://github.com/zeevl/rack-reverse-proxy/commit/fd3014ed5c8c582cbc1a00b42dbedafa7ac7a626
+          headers[$1.gsub('_', '-')] = value
         end
       }
       headers['HOST'] = uri.host if all_opts[:preserve_host]
@@ -38,18 +39,13 @@ module Rack
       end
       session.start { |http|
         m = rackreq.request_method
-        
-        #Added from https://github.com/sinm/rack-reverse-proxy/commit/10fe5feaa32848f7ed0b105f231c8a658b87444b
-        req = has_body = nil
-        begin
-          req = Net::HTTP.const_get(m.capitalize)
-          has_body = req::REQUEST_HAS_BODY
-        rescue
-          "method not supported: #{m}"
-        end
-        req = req.new(uri.request_uri, headers)
-        req.basic_auth all_opts[:username], all_opts[:password] if all_opts[:username] and all_opts[:password]
-        if has_body
+        case m
+        when "GET", "HEAD", "DELETE", "OPTIONS", "TRACE"
+          req = Net::HTTP.const_get(m.capitalize).new(uri.request_uri, headers)
+          req.basic_auth all_opts[:username], all_opts[:password] if all_opts[:username] and all_opts[:password]
+        when "PUT", "POST"
+          req = Net::HTTP.const_get(m.capitalize).new(uri.request_uri, headers)
+          req.basic_auth all_opts[:username], all_opts[:password] if all_opts[:username] and all_opts[:password]
 
           if rackreq.body.respond_to?(:read) && rackreq.body.respond_to?(:rewind)
             body = rackreq.body.read
